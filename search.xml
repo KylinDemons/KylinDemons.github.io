@@ -1,0 +1,324 @@
+<?xml version="1.0" encoding="utf-8"?>
+<search>
+  <entry>
+    <title>必过SafetyNet！</title>
+    <url>/2021/02/19/%E5%BF%85%E8%BF%87SafetyNet%EF%BC%81/</url>
+    <content><![CDATA[<h1>必过SafetyNet！以MIUI开发版系统为例详解Android设备通过SafetyNet校验方法</h1>
+<h2 id="作者">作者</h2>
+<p>梓沐啊_（KylinDemons）</p>
+<h2 id="版权声明">版权声明</h2>
+<p>Copyright © 2021 KylinDemons. All rights reserved.</p>
+<p>本文将在CSDN由作者KylinDemons、在酷安由@梓沐啊_、在QQ空间由1240193326授权发布</p>
+<p>未经许可，不得转载</p>
+<h2 id="免责声明">免责声明</h2>
+<p>本教程仅适用于学习研究用途。您的设备因本文出现的任何结果作者概不负责。请您注意数据备份并具有修复系统崩溃无法开机的能力。作者并不能保证该教程对于每个设备完全有效，该教程也具有时效性，请关注作者后期更新版本，恕不通知。作者提供的软件及工具均来自互联网，不对其版权及安全性等问题负责。</p>
+<h2 id="写在前面">写在前面</h2>
+<p>您需要明白一点，通过SafetyNet校验只有对出厂预装有GMS套件的设备才比较有意义。本教程的适用对象是那些本来有能力通过SafetyNet的设备，由于刷写了第三方ROM*（例如本文的实例：红米K30S的MIUI稳定版SafetyNet校验能通过，开发版却无法通过）*或者操作不当等原因造成的无法通过校验问题。对于那些在仅中国大陆发行且未预装GMS套件的设备来讲，本教程并不适用，不过您可以尝试刷写海外版固件等预装有GMS套件的ROM后尝试本教程。需要注意的是，对于没有第三方预装有GMS套件的ROM来说，您当然也可以尝试手动刷写GMS套件，但是您需要通过Magisk模块来更改您的手机型号才有可能通过SafetyNet校验。</p>
+<p>教程整个过程看似简单，但由于干扰因素太多，达到最终效果可能会很麻烦。如果您不清楚通过SafetyNet 校验的意义与重要性，或者用不到，可以查询后决定自己的需求，如果SafetyNet 对您无所谓，您可以浏览此文作为消遣；如果您需求很大，还请您耐心阅读耐心操作。</p>
+<h2 id="教程原理">教程原理</h2>
+<p>首先您应该明白，MIUI开发版由于一天一更新或者一周一更新的特性，就决定了它无法通过SafetyNet 校验(Google Play商店的设置中的“Play保护机制认证”显示为：设备未通过验证)。</p>
+<p>这是因为 SafetyNet 校验需要两个条件满足才能通过：<strong>第一是要确保系统文件的完整性，不能被篡改</strong>，这一点既是关键又是前提*(这里的“系统文件”可能不单单指System 分区中的文件，最近我发现，有些设备的校验好像比较严格，相同操作条件下，使用了第三方Recovery 就无法通过校验，此时System 分区并没有解锁，并没有修改)*，<strong>第二是要通过CTS（Compatibility Test Suite 兼容测试）认证</strong>，其过程可以简单理解为设备的系统指纹（fingerprint）信息必须提交给Google方面审核，Google审核通过后他们的服务器才会添加上这个设备的系统指纹信息。设备在进行SafetyNet 校验时会对比此时设备的系统指纹信息与Google 认证服务器上所存储的信息是否一致，如果一致则可以通过CTS认证，反之则不能通过。MIUI开发版更新迭代太快，系统指纹一天一变，根本来不及送给Google认证，所以Google认证服务器没有开发版的系统指纹信息，导致CTS认证不通过，是其SafetyNet不通过的根本原因。其他设备的ROM也是如此，如果开发者/OEM厂商因为某些原因（高昂的认证测试授权费等）未将设备的新系统相关信息提交给Google方面审核认证，CTS认证就无法通过。这也就是部分第三方ROM一直采用设备原固件系统指纹的原因，利于通过CTS认证。</p>
+<p><img src="https://img-blog.csdnimg.cn/20210219162749663.jpg?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L2ExMjQwMTkzMzI2,size_16,color_FFFFFF,t_70" alt="图示部分为该设备原有指纹信息"><br>
+<img src="https://img-blog.csdnimg.cn/20210219162844756.jpg?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L2ExMjQwMTkzMzI2,size_16,color_FFFFFF,t_70" alt="图示部分为更改后的设备指纹"></p>
+<p>手机还没解锁的条件下，MIUI开发版的SafetyNet极可能也是不通过的，通过Magisk Manager进行检查的伙伴们可能会发现，虽然校验不通过，但是basicIntegrity这个选项是对号，代表着通过；而ctsProfile不通过（如下图所示：这是本教程方法施行前您设备SafetyNet状态的要求，达不到这个要求无法继续教程），正好符合以上说法。这代表系统文件是完整的，现在只差通过一定的手段使ctsProfile通过认证即可。<br>
+<img src="https://img-blog.csdnimg.cn/2021021916295864.jpg?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L2ExMjQwMTkzMzI2,size_16,color_FFFFFF,t_70" alt="在这里插入图片描述"></p>
+<h2 id="如何检查SafetyNet校验状态">如何检查SafetyNet校验状态</h2>
+<p><em>有以下3种方式：（由于本教程需要用到Magisk，故推荐第一种）</em></p>
+<ol>
+<li>
+<p>Magisk Manager中自带SafetyNet状态检查<br>
+<img src="https://img-blog.csdnimg.cn/20210219163018942.jpg?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L2ExMjQwMTkzMzI2,size_16,color_FFFFFF,t_70" alt="在这里插入图片描述"><br>
+<img src="https://img-blog.csdnimg.cn/20210219163026621.jpg?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L2ExMjQwMTkzMzI2,size_16,color_FFFFFF,t_70" alt="在这里插入图片描述"></p>
+</li>
+<li>
+<p>利用Google Play商店设置中的“Play保护机制认证”（只能说明是否通过，无法查看详细信息，不推荐）<br>
+<img src="https://img-blog.csdnimg.cn/20210219163044237.jpg?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L2ExMjQwMTkzMzI2,size_16,color_FFFFFF,t_70" alt="在这里插入图片描述"></p>
+</li>
+<li>
+<p>利用第三方软件<br>
+<img src="https://img-blog.csdnimg.cn/20210219163107913.jpg?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L2ExMjQwMTkzMzI2,size_16,color_FFFFFF,t_70" alt="在这里插入图片描述"></p>
+</li>
+</ol>
+<h2 id="准备条件">准备条件</h2>
+<ol>
+<li>
+<p>手机必须已解锁BootLoader(如果不想解锁，很抱歉，您只能使用MIUI稳定版等自带GMS套件的设备官方固件来满足SafetyNet 校验通过的需求)。</p>
+</li>
+<li>
+<p>必须有能访问Google 的网络。</p>
+</li>
+<li>
+<p>设备安装有Magisk v20.4+</p>
+</li>
+<li>
+<p>目前支持Android 8～11</p>
+</li>
+</ol>
+<h2 id="注意事项">注意事项</h2>
+<ol>
+<li>
+<p>请您务必事先进行一次SafetyNet 校验，明白自己的设备系统文件完整性处于什么样的状态：如果basicIntegrity校验不通过，您暂时没必要继续阅读下去，请务必确保系统文件的完整性，否则下面的步骤全部没有意义。笔者的设备是在MIUI开发版的基础上解锁了BootLoader，仅仅通过Magisk Manager中的“选择修补一个文件”方式安装了Magisk，其他任何系统文件都没有进行过修改(没有刷写第三方Recovery ，没有解锁System 分区，仅仅修改了Boot分区)。</p>
+</li>
+<li>
+<p>必须启用“Magisk Hide”功能并重启手机。</p>
+</li>
+<li>
+<p>如果您在进行一定修复系统文件完整性的操作（重刷系统完整包、切换Magisk安装方式、恢复官方Recovery等 ）后依然无法通过basicIntegrity校验，请尝试线刷回稳定版MIUI等系统官方固件，正常开机后重新上锁BootLoader，通过系统更新中的切换版本切换为开发版后再次解锁BootLoader，然后提取系统完整安装包中的boot.img镜像到手机内部存储，安装Magisk Manager，利用Magisk Manager 修补刚刚提取的boot.img镜像得到修补后的文件magisk_patched.img文件，拷贝到电脑用Fastboot工具刷入到Boot分区，重启手机后打开Magisk Manager进行SafetyNet校验查看basicIntegrity是否能通过，期间不能执行其他直接修改系统的操作（安装Magisk模块除外）。只有出现以下SafetyNet校验结果时按照教程来操作才可能成功。</p>
+</li>
+</ol>
+<p><img src="https://img-blog.csdnimg.cn/20210219163133359.jpg?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L2ExMjQwMTkzMzI2,size_16,color_FFFFFF,t_70" alt="在这里插入图片描述"></p>
+<ol start="4">
+<li>
+<p><strong>使用第三方官改ROM的伙伴请注意</strong>，由于官改ROM的系统文件通常被修改，且System 分区被解锁，SafetyNet中的basicIntegrity校验几乎不可能通过，所以以下内容并不适用。实际上，绝大多数官改ROM是无法通过SafetyNet 校验的。请您做出使用官改ROM和通过SafetyNet校验之间的取舍。</p>
+</li>
+<li>
+<p>请确保设备的SELinux状态为Enforcing（强制模式），如果状态为Permissive（宽容模式），则很可能无法通过SaafetyNet校验。但是若您的设备在更改SELinux模式时遇到困难，请尝试更换ROM。</p>
+</li>
+<li>
+<p>建议在执行本教程步骤时没有安装其他Magisk模块（若有可全部停用），避免发生冲突和出现其他问题。</p>
+</li>
+<li>
+<p>Xposed框架用户请注意，原生Xposed框架（即使是通过Magisk安装的）将无法通过SafetyNet校验，而EdXposed用户需要进行设置，开启“白名单模式”，开启“强制通过SafetyNet”。强烈推荐使用最近发布的LSPosed框架，兼容性与效率很高，同时无需设置即可通过SafetyNet校验。</p>
+</li>
+<li>
+<p>请注意，在有些设备上通过第三方Recovery（例如TWRP）卡刷方式安装的Magisk并不能通过SafetyNet校验，强烈推荐使用Magisk Manager自带的“选择并修补一个文件”的方式来安装Magisk。</p>
+</li>
+</ol>
+<p><img src="https://img-blog.csdnimg.cn/2021021916314459.jpg?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L2ExMjQwMTkzMzI2,size_16,color_FFFFFF,t_70" alt="在这里插入图片描述"></p>
+<ol start="9">
+<li>
+<p>如果您使用旧版本Magisk Manager在主界面并未出现“检查SafetyNet的选项”或者新版本出现以下如图所示的校验情况（evalType类型为N/A），请查看您的手机是否冻结/停用了Google基础服务组件，恢复/启用后检查您的Google网络访问连通性后再试，也有可能是Google服务器拒绝了您的校验请求，这并不能说明系统文件不完整。<br>
+<img src="https://img-blog.csdnimg.cn/20210219163215606.jpg?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L2ExMjQwMTkzMzI2,size_16,color_FFFFFF,t_70" alt="在这里插入图片描述"><br>
+<img src="https://img-blog.csdnimg.cn/20210219163230404.jpg?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L2ExMjQwMTkzMzI2,size_16,color_FFFFFF,t_70" alt="在这里插入图片描述"><br>
+<img src="https://img-blog.csdnimg.cn/20210219163239809.jpg?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L2ExMjQwMTkzMzI2,size_16,color_FFFFFF,t_70" alt="在这里插入图片描述"></p>
+</li>
+<li>
+<p>如果您的ROM在进行任何系统完整性修复的操作后始终无法通过basicIntegrity校验，说明您的ROM可能存在自身设计不规范或者缺陷，请与您使用同样设备的伙伴进行经验交流获取帮助或者联系ROM开发者。也可以访问https://www.didgeridoohan.com/magisk/MagiskHideSafetyNet尝试获取更多解决方案。</p>
+</li>
+</ol>
+<h2 id="所需工具">所需工具</h2>
+<p><em>（以下工具强烈建议通过官方地址下载来获取最新版本，以提升兼容性与稳定性）</em></p>
+<ol>
+<li>MagiskHide Props Config模块</li>
+</ol>
+<p>官方地址：<a href="https://forum.xda-developers.com/t/module-magiskhide-props-config-safetynet-prop-edits-and-more-v5-4-0.3789228">https://forum.xda-developers.com/t/module-magiskhide-props-config-safetynet-prop-edits-and-more-v5-4-0.3789228</a></p>
+<ol start="2">
+<li>Universal SafetyNet Fix模块</li>
+</ol>
+<p>官方地址：<a href="https://github.com/kdrag0n/safetynet-fix">https://github.com/kdrag0n/safetynet-fix</a></p>
+<ol start="3">
+<li>DevCheck（可选，用来检测系统指纹是否发生改变）</li>
+</ol>
+<p>Play商店地址：<a href="https://play.google.com/store/apps/details?id=flar2.devcheck&amp;hl=zh&amp;gl=US">https://play.google.com/store/apps/details?id=flar2.devcheck&amp;hl=zh&amp;gl=US</a></p>
+<ol start="4">
+<li>
+<p>Android终端模拟器（任选一款即可）</p>
+</li>
+<li>
+<p>SafetyNet第三方检测工具（可选）：SafetyNet Test</p>
+</li>
+</ol>
+<p>Play商店地址：<a href="https://play.google.com/store/apps/details?id=org.freeandroidtools.safetynettest&amp;hl=zh&amp;gl=US">https://play.google.com/store/apps/details?id=org.freeandroidtools.safetynettest&amp;hl=zh&amp;gl=US</a></p>
+<p>以上工具截止笔者完成此教程时的最新版本放在一起了，方便伙伴们高速下载</p>
+<p>地址：<a href="https://kylindemons.lanzous.com/b03hiylaj">https://kylindemons.lanzous.com/b03hiylaj</a> 密码:1234</p>
+<p>若网址失效请私信笔者补发</p>
+<h2 id="过程步骤">过程步骤</h2>
+<ol>
+<li>
+<p>在Magisk Manager中安装Universal SafetyNet Fix模块后重启手机，检查SafetyNet校验是否通过，如果仍然未通过执行步骤2。</p>
+</li>
+<li>
+<p>在Magisk Manager中安装MagiskHide Props Config模块后重启手机。</p>
+</li>
+<li>
+<p>安装“终端模拟器”并运行。</p>
+</li>
+<li>
+<p>英文输入状态下输入su并回车，授予ROOT权限。</p>
+</li>
+<li>
+<p>成功获取超级用户#权限后，输入props并回车，等待出现以下界面：<br>
+<img src="https://img-blog.csdnimg.cn/20210219163338886.jpg?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L2ExMjQwMTkzMzI2,size_16,color_FFFFFF,t_70" alt="在这里插入图片描述"></p>
+</li>
+<li>
+<p>输入数字1并回车，进入编辑设备指纹界面：</p>
+</li>
+</ol>
+<p><img src="https://img-blog.csdnimg.cn/20210219163348302.jpg?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L2ExMjQwMTkzMzI2,size_16,color_FFFFFF,t_70" alt="在这里插入图片描述"></p>
+<ol start="7">
+<li>
+<p>此时可以看到当前的设备指纹，在这里显然是MIUI开发版指纹的特点，包含了MIUI版本号。输入1以选择一个被认证的指纹。</p>
+</li>
+<li>
+<p>在下面的界面里，请根据自己的设备制造商和型号进行选择。请注意：如果通过这两个列表找不到您的设备，这证明您的设备厂商未将其在Google进行过CTS认证，那么很抱歉，此时您不能很好地利用此教程通过SafetyNet校验，除非您通过Magisk模块修改自己的设备型号来进行伪装并在这两个列表选择相同品牌相似型号的机型进行尝试。</p>
+</li>
+</ol>
+<p><img src="https://img-blog.csdnimg.cn/20210219163359747.jpg?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L2ExMjQwMTkzMzI2,size_16,color_FFFFFF,t_70" alt="在这里插入图片描述"><br>
+<img src="https://img-blog.csdnimg.cn/20210219163406439.jpg?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L2ExMjQwMTkzMzI2,size_16,color_FFFFFF,t_70" alt="在这里插入图片描述"></p>
+<ol start="9">
+<li>
+<p>成功更改后连续键入两次y并回车来重启设备完成操作。</p>
+</li>
+<li>
+<p>重启后，可利用DevCheck来检查设备指纹是否发生改变，并进行SafetyNet校验，不出意外，您将完美通过校验。</p>
+</li>
+</ol>
+<h2 id="后续注意">后续注意</h2>
+<ol>
+<li>即使通过SafetyNet校验，部分应用仍然在Google Play商店不可安装显示不兼容或者搜索不到，这是正常现象，首先请清除Play商店的应用数据，重启设备后打开Play商店查看“Play保护机制认证”是否为“已通过认证”（可能有时候找不到这个选项，这时请多重启几次手机并稍后再试），若已通过认证后仍然出现上述现象，可能意味着对于这些应用Google尚未在您的设备上进行兼容性测试，但并不代表不能用，解决方式是通过第三方应用商店（例如APKMirror、Apkpure、Aptoide等）获取安装。</li>
+</ol>
+<p><img src="https://img-blog.csdnimg.cn/20210219163437240.jpg?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L2ExMjQwMTkzMzI2,size_16,color_FFFFFF,t_70" alt="在这里插入图片描述"></p>
+<ol start="2">
+<li>
+<p>在您利用本教程方法通过SafetyNet校验后，您不能卸载这两个模块，不能开启Magisk核心功能模式，不能卸载Magisk，不能解锁System分区和修改任何系统文件，否则可能会失效。</p>
+</li>
+<li>
+<p>由于此教程会更改设备指纹，可能会影响极少部分软件的使用，请注意。</p>
+</li>
+<li>
+<p>后期系统OTA升级不会受影响，但您一定要注意升级时保护Magisk的存在，不能丢失安装。</p>
+</li>
+<li>
+<p>某些软件的安全环境检测机制过于复杂，可能在通过SafetyNet校验后仍然报为不安全而无法使用，这时候请善于利用MagiskHide等功能加强防检测。</p>
+</li>
+</ol>
+]]></content>
+      <categories>
+        <category>Android</category>
+      </categories>
+      <tags>
+        <tag>SafetyNet</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>解决KVM无法在NTFS分区上建立虚拟机，报错：Process exited while connecting to monitor Permission Denied</title>
+    <url>/2022/05/27/%E8%A7%A3%E5%86%B3KVM%E6%97%A0%E6%B3%95%E5%9C%A8NTFS%E5%88%86%E5%8C%BA%E4%B8%8A%E5%BB%BA%E7%AB%8B%E8%99%9A%E6%8B%9F%E6%9C%BA%EF%BC%8C%E6%8A%A5%E9%94%99%EF%BC%9AProcess%20exited%20while%20connecting%20to%20monitor%20Permission%20Denied/</url>
+    <content><![CDATA[<h1>问题背景</h1>
+<p>笔者不小心弄坏了自己笔记本的Ubuntu，由于没有重要数据，便想着直接重装，顺便体验一下最新的Fedora 36。安装完后打算利用KVM创建一个Windows虚拟机用于测试。结果按照以往在Ubuntu上的KVM使用经验始终创建失败。</p>
+<hr>
+<h1>问题描述</h1>
+<p>我习惯把虚拟机存放在机械硬盘上的大容量NTFS分区上。在初始配置好虚拟机后，点击“开始安装”准备进入虚拟机系统的安装过程时，始终无法开启虚拟机，并弹出以下错误：Process exited while connecting to monitor: Permission Denied.（如图所示）<br>
+<img src="https://img-blog.csdnimg.cn/057275cf58d149ce89e60c6390479dae.png#pic_center" alt="报错提示框"></p>
+<hr>
+<h1>原因分析</h1>
+<p>根据错误提示，可以判断问题出在KVM无法操作虚拟机的磁盘文件上，我首先想到的是机械硬盘在Fedora上的挂载有问题，尤其是NTFS分区很容易在Linux上出现权限问题。但排查后发现，该NTFS分区内的文件读写权限正常，一般用户都能在其中读取修改和执行文件，怎么轮到权限更高的KVM就没文件操作权限了呢？而且更匪夷所思的是，虚拟机管理器Libvirt可以在该分区中创建虚拟磁盘文件。这证明读写权限确实是有的，那为什么还会报“Permission Denied”这种错呢？似乎有一种无形的规则限制了KVM对NTFS上的虚拟磁盘文件进行某些操作。甚至到最后我装回Ubuntu再试，却发现没任何毛病。感觉这个故障好像就存在Fedora系的发行版上似的。</p>
+<p>可能是Bug吧，我想。无奈之下，就一时放弃了。过了几天，在浏览关于Fedora的文章中发现提到了SELinux，这引起了我的注意。我突然想到，以往自己使用的Ubuntu默认是没有开启SELinux的，而作为安全性和稳定性都比较高的红帽Linux的亲兄弟Fedora，自然SELinux是默认开启状态。我们知道SELinux是一种访问控制体系，那KVM无法在NTFS分区中操作虚拟磁盘文件的毛病会不会和这个有关系？在我查阅大量资料后，终于得到了问题解决方案。果然是SELinux安全策略搞的鬼，限制了Libvirt在FUSE文件系统（本质上不是真正的文件系统，其中包含了NTFS文件系统在Linux上的挂载访问实现）上的文件操作权限。</p>
+<hr>
+<h1>解决方案</h1>
+<p>打开终端，执行以下命令即可：</p>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo setsebool -P virt_use_fusefs 1</span><br></pre></td></tr></table></figure>
+<p><img src="https://img-blog.csdnimg.cn/dd93d1386a254e95a59d839767d97fb8.png#pic_center" alt="执行图中命令"><br>
+无需重启，即时生效，问题得到解决。</p>
+<p><code>提示：遇到类似问题，首先请根据自己的实际情况，确定虚拟磁盘文件所在的分区的读写执行权限确实没问题后，再尝试本解决方案。</code></p>
+]]></content>
+      <categories>
+        <category>Linux</category>
+      </categories>
+      <tags>
+        <tag>Fedora</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>在Fedora中全自动签名英伟达驱动内核模块以支持安全启动（Secure Boot）</title>
+    <url>/2022/04/09/%E5%9C%A8Fedora%E4%B8%AD%E5%85%A8%E8%87%AA%E5%8A%A8%E7%AD%BE%E5%90%8D%E8%8B%B1%E4%BC%9F%E8%BE%BE%E9%A9%B1%E5%8A%A8%E5%86%85%E6%A0%B8%E6%A8%A1%E5%9D%97%E4%BB%A5%E6%94%AF%E6%8C%81%E5%AE%89%E5%85%A8%E5%90%AF%E5%8A%A8%EF%BC%88Secure%20Boot%EF%BC%89/</url>
+    <content><![CDATA[<h1>前言</h1>
+<p>目前新出厂的电脑UEFI会默认开启安全启动（Secure Boot），以阻止不受信任的引导加载程序启动，可以在一定程度上防御RootKit病毒，不过同样会阻止一些未经微软签名的Linux发行版的安装和运行，比如Arch Linux。虽然可以直接选择在主板设置中关闭安全启动来解决一系列麻烦，但就在近期微软公布的Windows11最低硬件标准中可以看到，安全启动被微软看的越来越重。所以掌握让自己常用的Linux发行版支持安全启动的方法是有必要的。然而，让Linux本身支持安全启动，最重要的是让发行商对该Linux的内核与引导加载器进行签名。本文就已经通过安全启动认证的比较受欢迎的一个Linux发行版——Fedora，来讲解常见的英伟达驱动签名问题。</p>
+<p>至于为什么有这个教程，是因为如果在Fedora上通过自带软件源一键安装官方的英伟达驱动，会造成这些驱动的内核模块未签名，导致在Linux启动过程中因为安全启动校验签名的存在，被阻止加载这些模块，进而无法正常驱动显卡。用过Ubuntu的伙伴们应该知道，在安全启动开启的情况下 ，Ubuntu安装程序会自动用自签密钥签名英伟达驱动内核模块，并在开机过程中自动将该自签密钥导入MOK List（安全启动机器主人信任密钥列表）。而Fedora只会保证自身内核签名有效，对后期安装的第三方内核模块签名问题不予理会，导致无法正常加载英伟达驱动。</p>
+<p><strong>本教程已在Fedora 36 Beta版本上测试通过，理论上向上或向下兼容，具体<br>
+是否有效请自测。注意备份重要数据！笔者仅为分享经验，不对您的任何操作造成的任何后果而负责！</strong></p>
+<h1>前提条件</h1>
+<p>在开始之前，您的电脑必须满足以下条件</p>
+<ol>
+<li><strong>主板必须在已经开启安全启动的情况下安装Fedora</strong></li>
+<li><strong>必须确保任何来源、任何版本的英伟达驱动从未被安装过</strong> （如果已经安装过，请搜索有关彻底卸载的相关教程，或者直接重装系统。因为笔者在试验时发现卸载完后再继续进行以下步骤仍然会导致驱动模块无法被签名）</li>
+</ol>
+<h1>具体步骤</h1>
+<p>打开终端，按步骤分别执行以下命令（本教程通用性强，无需考虑命令中的路径与环境变量问题）。</p>
+<h2 id="1-将系统更新到最新并重启Fedora">1.将系统更新到最新并重启Fedora</h2>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo dnf update</span><br><span class="line">sudo reboot</span><br></pre></td></tr></table></figure>
+<p><img src="https://img-blog.csdnimg.cn/186ac80f5d344352ae2afeab54d8abea.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="将系统更新到最新并重启Fedora"></p>
+<h2 id="2-安装Mok工具（mokutil）和密钥生成工具（openssl）">2.安装Mok工具（mokutil）和密钥生成工具（openssl）</h2>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo dnf install mokutil openssl</span><br></pre></td></tr></table></figure>
+<p><img src="https://img-blog.csdnimg.cn/8209ef14f1284d03b92479c6ba51a9cc.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="安装Mok工具和密钥生成工具"></p>
+<h2 id="3-生成内核驱动模块的自签安全启动密钥">3.生成内核驱动模块的自签安全启动密钥</h2>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo openssl req -new -x509 -newkey rsa:2048 -keyout ~/driver-signing.key -outform DER -out ~/driver-signing.der -nodes -days 36500 -subj <span class="string">&quot;/CN=Private Driver Signing&quot;</span></span><br></pre></td></tr></table></figure>
+<p><img src="https://img-blog.csdnimg.cn/f3b3643ef46f4bc19193051fb24dc126.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="生成内核驱动模块的自签安全启动密钥"></p>
+<h2 id="4-将刚刚自签的安全启动密钥进行注册（导入进主板）">4.将刚刚自签的安全启动密钥进行注册（导入进主板）</h2>
+<p>此操作会让Linux内核信任由该自签密钥签名过的任何内核模块。</p>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo mokutil --import ~/driver-signing.der</span><br></pre></td></tr></table></figure>
+<p>执行完此命令后，控制台会让您设置一个密码，该密码的作用是用来导入并注册自签自签密钥，只会在第6步用到一次，合理设置即可，建议8位。<br>
+<img src="https://img-blog.csdnimg.cn/3462d916e5c74b02afc0ce54d61b2e1b.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="在这里插入图片描述"></p>
+<h2 id="5-重启电脑">5.重启电脑</h2>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo reboot</span><br></pre></td></tr></table></figure>
+<h2 id="6-导入并注册自签密钥">6.导入并注册自签密钥</h2>
+<p>在第5步键入完命令并重启时，系统启动之前会出现一个蓝色界面（标题为<strong>MOK Manager</strong>）。在安全启动的条件下安装过Ubuntu的您可能会熟悉。按照以下选项导入密钥即可：<br>
+<strong>注意：以下几个步骤要小心，任何一步误操作，都必须从第4步开始重做。</strong></p>
+<ol>
+<li>
+<p>通过方向键选择“Enroll MOK”<img src="https://img-blog.csdnimg.cn/51cd70e3164a45ecb68b1c7eabe79e02.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="Enroll MOK"></p>
+</li>
+<li>
+<p>选择“Continue”<img src="https://img-blog.csdnimg.cn/e18eaa33448d482c8588139d3a0215a3.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="Continue"></p>
+</li>
+<li>
+<p>选择“Yes”<img src="https://img-blog.csdnimg.cn/e70070c9f37a4e749c2364dee4707aec.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="Yes"></p>
+</li>
+<li>
+<p>此时输入在第4步时设置的密码并回车（输入过程中密码不会显示）<img src="https://img-blog.csdnimg.cn/f258df942b034ea6b5beeeae7df5ceb2.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="键入密码并回车"></p>
+</li>
+<li>
+<p>成功后选择“Reboot”<img src="https://img-blog.csdnimg.cn/5b1b69bfadd446d99adaf099ae6ad3e7.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="Reboot"><br>
+<strong>此时，电脑会再次重启，等待进入Fedora即可。</strong></p>
+</li>
+</ol>
+<h2 id="7-启用两个第三方仓库，以便于安装修改过的内核工具进行模块签名">7.启用两个第三方仓库，以便于安装修改过的内核工具进行模块签名</h2>
+<p>（感谢<a href="https://www.reddit.com/user/EliaGeretto/">Elia Geretto</a>提供的仓库）</p>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo dnf copr <span class="built_in">enable</span> egeretto/kmodtool-secureboot</span><br></pre></td></tr></table></figure>
+<p><img src="https://img-blog.csdnimg.cn/ef9c10735a6d40f49ac8e8826d090f1f.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="在这里插入图片描述"></p>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo dnf copr <span class="built_in">enable</span> egeretto/akmods-secureboot</span><br></pre></td></tr></table></figure>
+<p><img src="https://img-blog.csdnimg.cn/667a68080f8248d1bcf975586a01fed8.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="在这里插入图片描述"></p>
+<h2 id="8-修改仓库优先级，让修改过的内核工具优先于官方原版安装">8.修改仓库优先级，让修改过的内核工具优先于官方原版安装</h2>
+<p>以ROOT权限打开文件管理器，修改以下两个文件，每个文件均增加一行：priority=1，然后保存退出。<br>
+<img src="https://img-blog.csdnimg.cn/6b137377ccdb407a9db0581ddfeeb394.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="在这里插入图片描述"><br>
+执行以下命令刷新软件源：</p>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo dnf update --refresh</span><br></pre></td></tr></table></figure>
+<h2 id="9-安装修改过的内核工具（kmodtool与akmods）">9.安装修改过的内核工具（kmodtool与akmods）</h2>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo dnf install kmodtool akmods</span><br></pre></td></tr></table></figure>
+<p><strong>注意控制台中的此处，查看这两个软件包是否来自于刚刚添加的第三方仓库</strong><br>
+<img src="https://img-blog.csdnimg.cn/0c737ccdbc7f441dbd6cc83d5fe227b3.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="如图所示"><br>
+输入y同意导入仓库公钥：<br>
+<img src="https://img-blog.csdnimg.cn/cf35e9b4073140198be264a722d928aa.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="在这里插入图片描述"></p>
+<h2 id="10-移动证书至正确的位置以便于内核工具能识别到">10.移动证书至正确的位置以便于内核工具能识别到</h2>
+<p>依次执行以下命令即可：</p>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo mv ~/driver-signing.der /etc/pki/akmods/certs/public_key.der</span><br></pre></td></tr></table></figure>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo chown root:akmods /etc/pki/akmods/certs/public_key.der</span><br></pre></td></tr></table></figure>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo chmod 640 /etc/pki/akmods/certs/public_key.der</span><br></pre></td></tr></table></figure>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo mv ~/driver-signing.key /etc/pki/akmods/private/private_key.priv</span><br></pre></td></tr></table></figure>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo chown root:akmods /etc/pki/akmods/private/private_key.priv</span><br></pre></td></tr></table></figure>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo chmod 640 /etc/pki/akmods/private/private_key.priv</span><br></pre></td></tr></table></figure>
+<p><img src="https://img-blog.csdnimg.cn/b5151ee4ec10446abac7811e02ed72b4.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="在这里插入图片描述"></p>
+<h2 id="11-安装英伟达驱动">11.安装英伟达驱动</h2>
+<p>执行以下命令即可：</p>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo dnf install gcc kernel-headers kernel-devel akmod-nvidia xorg-x11-drv-nvidia xorg-x11-drv-nvidia-libs xorg-x11-drv-nvidia-libs.i686</span><br></pre></td></tr></table></figure>
+<h2 id="12-编译并签名驱动内核模块">12.编译并签名驱动内核模块</h2>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo akmods --force</span><br></pre></td></tr></table></figure>
+<h2 id="13-更新内核启动镜像">13.更新内核启动镜像</h2>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo dracut --force</span><br></pre></td></tr></table></figure>
+<p><img src="https://img-blog.csdnimg.cn/1d20154c7cea4db5876c1d50a61ebabd.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="在这里插入图片描述"></p>
+<h2 id="14-重启电脑">14.重启电脑</h2>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo reboot</span><br></pre></td></tr></table></figure>
+<h2 id="15-查看英伟达驱动是否正确加载">15.查看英伟达驱动是否正确加载</h2>
+<p>执行以下命令，查看是否有如图所示的类似结果，并查看英伟达控制面板是否正常显示。<br>
+<img src="https://img-blog.csdnimg.cn/7d079ab77c5b49d4b44976ce4902aae4.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="内核模块已正确加载效果图"><br>
+<img src="https://img-blog.csdnimg.cn/79ea558827454978ba64fc6f6795f3ab.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="在这里插入图片描述"><br>
+<img src="https://img-blog.csdnimg.cn/edb0f800e4554b9d8d4d2e650159eef4.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="在这里插入图片描述"><br>
+教程结束</p>
+]]></content>
+      <categories>
+        <category>Linux</category>
+      </categories>
+      <tags>
+        <tag>Fedora</tag>
+      </tags>
+  </entry>
+</search>
