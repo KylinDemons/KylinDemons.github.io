@@ -1,6 +1,109 @@
 <?xml version="1.0" encoding="utf-8"?>
 <search>
   <entry>
+    <title>在Fedora中全自动签名英伟达驱动内核模块以支持安全启动（Secure Boot）</title>
+    <url>/2022/04/09/%E5%9C%A8Fedora%E4%B8%AD%E5%85%A8%E8%87%AA%E5%8A%A8%E7%AD%BE%E5%90%8D%E8%8B%B1%E4%BC%9F%E8%BE%BE%E9%A9%B1%E5%8A%A8%E5%86%85%E6%A0%B8%E6%A8%A1%E5%9D%97%E4%BB%A5%E6%94%AF%E6%8C%81%E5%AE%89%E5%85%A8%E5%90%AF%E5%8A%A8%EF%BC%88Secure%20Boot%EF%BC%89/</url>
+    <content><![CDATA[<h1>前言</h1>
+<p>目前新出厂的电脑UEFI会默认开启安全启动（Secure Boot），以阻止不受信任的引导加载程序启动，可以在一定程度上防御RootKit病毒，不过同样会阻止一些未经微软签名的Linux发行版的安装和运行，比如Arch Linux。虽然可以直接选择在主板设置中关闭安全启动来解决一系列麻烦，但就在近期微软公布的Windows11最低硬件标准中可以看到，安全启动被微软看的越来越重。所以掌握让自己常用的Linux发行版支持安全启动的方法是有必要的。然而，让Linux本身支持安全启动，最重要的是让发行商对该Linux的内核与引导加载器进行签名。本文就已经通过安全启动认证的比较受欢迎的一个Linux发行版——Fedora，来讲解常见的英伟达驱动签名问题。</p>
+<p>至于为什么有这个教程，是因为如果在Fedora上通过自带软件源一键安装官方的英伟达驱动，会造成这些驱动的内核模块未签名，导致在Linux启动过程中因为安全启动校验签名的存在，被阻止加载这些模块，进而无法正常驱动显卡。用过Ubuntu的伙伴们应该知道，在安全启动开启的情况下 ，Ubuntu安装程序会自动用自签密钥签名英伟达驱动内核模块，并在开机过程中自动将该自签密钥导入MOK List（安全启动机器主人信任密钥列表）。而Fedora只会保证自身内核签名有效，对后期安装的第三方内核模块签名问题不予理会，导致无法正常加载英伟达驱动。</p>
+<p><strong>本教程已在Fedora 36 Beta版本上测试通过，理论上向上或向下兼容，具体<br>
+是否有效请自测。注意备份重要数据！笔者仅为分享经验，不对您的任何操作造成的任何后果而负责！</strong></p>
+<h1>前提条件</h1>
+<p>在开始之前，您的电脑必须满足以下条件</p>
+<ol>
+<li><strong>主板必须在已经开启安全启动的情况下安装Fedora</strong></li>
+<li><strong>必须确保任何来源、任何版本的英伟达驱动从未被安装过</strong> （如果已经安装过，请搜索有关彻底卸载的相关教程，或者直接重装系统。因为笔者在试验时发现卸载完后再继续进行以下步骤仍然会导致驱动模块无法被签名）</li>
+</ol>
+<h1>具体步骤</h1>
+<p>打开终端，按步骤分别执行以下命令（本教程通用性强，无需考虑命令中的路径与环境变量问题）。</p>
+<h2 id="1-将系统更新到最新并重启Fedora">1.将系统更新到最新并重启Fedora</h2>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo dnf update</span><br><span class="line">sudo reboot</span><br></pre></td></tr></table></figure>
+<p><img src="https://img-blog.csdnimg.cn/186ac80f5d344352ae2afeab54d8abea.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="将系统更新到最新并重启Fedora"></p>
+<h2 id="2-安装Mok工具（mokutil）和密钥生成工具（openssl）">2.安装Mok工具（mokutil）和密钥生成工具（openssl）</h2>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo dnf install mokutil openssl</span><br></pre></td></tr></table></figure>
+<p><img src="https://img-blog.csdnimg.cn/8209ef14f1284d03b92479c6ba51a9cc.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="安装Mok工具和密钥生成工具"></p>
+<h2 id="3-生成内核驱动模块的自签安全启动密钥">3.生成内核驱动模块的自签安全启动密钥</h2>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo openssl req -new -x509 -newkey rsa:2048 -keyout ~/driver-signing.key -outform DER -out ~/driver-signing.der -nodes -days 36500 -subj <span class="string">&quot;/CN=Private Driver Signing&quot;</span></span><br></pre></td></tr></table></figure>
+<p><img src="https://img-blog.csdnimg.cn/f3b3643ef46f4bc19193051fb24dc126.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="生成内核驱动模块的自签安全启动密钥"></p>
+<h2 id="4-将刚刚自签的安全启动密钥进行注册（导入进主板）">4.将刚刚自签的安全启动密钥进行注册（导入进主板）</h2>
+<p>此操作会让Linux内核信任由该自签密钥签名过的任何内核模块。</p>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo mokutil --import ~/driver-signing.der</span><br></pre></td></tr></table></figure>
+<p>执行完此命令后，控制台会让您设置一个密码，该密码的作用是用来导入并注册自签自签密钥，只会在第6步用到一次，合理设置即可，建议8位。<br>
+<img src="https://img-blog.csdnimg.cn/3462d916e5c74b02afc0ce54d61b2e1b.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="在这里插入图片描述"></p>
+<h2 id="5-重启电脑">5.重启电脑</h2>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo reboot</span><br></pre></td></tr></table></figure>
+<h2 id="6-导入并注册自签密钥">6.导入并注册自签密钥</h2>
+<p>在第5步键入完命令并重启时，系统启动之前会出现一个蓝色界面（标题为<strong>MOK Manager</strong>）。在安全启动的条件下安装过Ubuntu的您可能会熟悉。按照以下选项导入密钥即可：<br>
+<strong>注意：以下几个步骤要小心，任何一步误操作，都必须从第4步开始重做。</strong></p>
+<ol>
+<li>
+<p>通过方向键选择“Enroll MOK”<img src="https://img-blog.csdnimg.cn/51cd70e3164a45ecb68b1c7eabe79e02.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="Enroll MOK"></p>
+</li>
+<li>
+<p>选择“Continue”<img src="https://img-blog.csdnimg.cn/e18eaa33448d482c8588139d3a0215a3.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="Continue"></p>
+</li>
+<li>
+<p>选择“Yes”<img src="https://img-blog.csdnimg.cn/e70070c9f37a4e749c2364dee4707aec.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="Yes"></p>
+</li>
+<li>
+<p>此时输入在第4步时设置的密码并回车（输入过程中密码不会显示）<img src="https://img-blog.csdnimg.cn/f258df942b034ea6b5beeeae7df5ceb2.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="键入密码并回车"></p>
+</li>
+<li>
+<p>成功后选择“Reboot”<img src="https://img-blog.csdnimg.cn/5b1b69bfadd446d99adaf099ae6ad3e7.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="Reboot"><br>
+<strong>此时，电脑会再次重启，等待进入Fedora即可。</strong></p>
+</li>
+</ol>
+<h2 id="7-启用两个第三方仓库，以便于安装修改过的内核工具进行模块签名">7.启用两个第三方仓库，以便于安装修改过的内核工具进行模块签名</h2>
+<p>（感谢<a href="https://www.reddit.com/user/EliaGeretto/">Elia Geretto</a>提供的仓库）</p>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo dnf copr <span class="built_in">enable</span> egeretto/kmodtool-secureboot</span><br></pre></td></tr></table></figure>
+<p><img src="https://img-blog.csdnimg.cn/ef9c10735a6d40f49ac8e8826d090f1f.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="在这里插入图片描述"></p>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo dnf copr <span class="built_in">enable</span> egeretto/akmods-secureboot</span><br></pre></td></tr></table></figure>
+<p><img src="https://img-blog.csdnimg.cn/667a68080f8248d1bcf975586a01fed8.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="在这里插入图片描述"></p>
+<h2 id="8-修改仓库优先级，让修改过的内核工具优先于官方原版安装">8.修改仓库优先级，让修改过的内核工具优先于官方原版安装</h2>
+<p>以ROOT权限打开文件管理器，修改以下两个文件，每个文件均增加一行：priority=1，然后保存退出。<br>
+<img src="https://img-blog.csdnimg.cn/6b137377ccdb407a9db0581ddfeeb394.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="在这里插入图片描述"><br>
+执行以下命令刷新软件源：</p>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo dnf update --refresh</span><br></pre></td></tr></table></figure>
+<h2 id="9-安装修改过的内核工具（kmodtool与akmods）">9.安装修改过的内核工具（kmodtool与akmods）</h2>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo dnf install kmodtool akmods</span><br></pre></td></tr></table></figure>
+<p><strong>注意控制台中的此处，查看这两个软件包是否来自于刚刚添加的第三方仓库</strong><br>
+<img src="https://img-blog.csdnimg.cn/0c737ccdbc7f441dbd6cc83d5fe227b3.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="如图所示"><br>
+输入y同意导入仓库公钥：<br>
+<img src="https://img-blog.csdnimg.cn/cf35e9b4073140198be264a722d928aa.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="在这里插入图片描述"></p>
+<h2 id="10-移动证书至正确的位置以便于内核工具能识别到">10.移动证书至正确的位置以便于内核工具能识别到</h2>
+<p>依次执行以下命令即可：</p>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo mv ~/driver-signing.der /etc/pki/akmods/certs/public_key.der</span><br></pre></td></tr></table></figure>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo chown root:akmods /etc/pki/akmods/certs/public_key.der</span><br></pre></td></tr></table></figure>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo chmod 640 /etc/pki/akmods/certs/public_key.der</span><br></pre></td></tr></table></figure>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo mv ~/driver-signing.key /etc/pki/akmods/private/private_key.priv</span><br></pre></td></tr></table></figure>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo chown root:akmods /etc/pki/akmods/private/private_key.priv</span><br></pre></td></tr></table></figure>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo chmod 640 /etc/pki/akmods/private/private_key.priv</span><br></pre></td></tr></table></figure>
+<p><img src="https://img-blog.csdnimg.cn/b5151ee4ec10446abac7811e02ed72b4.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="在这里插入图片描述"></p>
+<h2 id="11-安装英伟达驱动">11.安装英伟达驱动</h2>
+<p>执行以下命令即可：</p>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo dnf install gcc kernel-headers kernel-devel akmod-nvidia xorg-x11-drv-nvidia xorg-x11-drv-nvidia-libs xorg-x11-drv-nvidia-libs.i686</span><br></pre></td></tr></table></figure>
+<h2 id="12-编译并签名驱动内核模块">12.编译并签名驱动内核模块</h2>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo akmods --force</span><br></pre></td></tr></table></figure>
+<h2 id="13-更新内核启动镜像">13.更新内核启动镜像</h2>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo dracut --force</span><br></pre></td></tr></table></figure>
+<p><img src="https://img-blog.csdnimg.cn/1d20154c7cea4db5876c1d50a61ebabd.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="在这里插入图片描述"></p>
+<h2 id="14-重启电脑">14.重启电脑</h2>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo reboot</span><br></pre></td></tr></table></figure>
+<h2 id="15-查看英伟达驱动是否正确加载">15.查看英伟达驱动是否正确加载</h2>
+<p>执行以下命令，查看是否有如图所示的类似结果，并查看英伟达控制面板是否正常显示。<br>
+<img src="https://img-blog.csdnimg.cn/7d079ab77c5b49d4b44976ce4902aae4.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="内核模块已正确加载效果图"><br>
+<img src="https://img-blog.csdnimg.cn/79ea558827454978ba64fc6f6795f3ab.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="在这里插入图片描述"><br>
+<img src="https://img-blog.csdnimg.cn/edb0f800e4554b9d8d4d2e650159eef4.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="在这里插入图片描述"><br>
+教程结束</p>
+]]></content>
+      <categories>
+        <category>Linux</category>
+      </categories>
+      <tags>
+        <tag>Fedora</tag>
+      </tags>
+  </entry>
+  <entry>
     <title>必过SafetyNet！</title>
     <url>/2021/02/19/%E5%BF%85%E8%BF%87SafetyNet%EF%BC%81/</url>
     <content><![CDATA[<h1>必过SafetyNet！以MIUI开发版系统为例详解Android设备通过SafetyNet校验方法</h1>
@@ -210,109 +313,6 @@
 <p><img src="https://img-blog.csdnimg.cn/dd93d1386a254e95a59d839767d97fb8.png#pic_center" alt="执行图中命令"><br>
 无需重启，即时生效，问题得到解决。</p>
 <p><code>提示：遇到类似问题，首先请根据自己的实际情况，确定虚拟磁盘文件所在的分区的读写执行权限确实没问题后，再尝试本解决方案。</code></p>
-]]></content>
-      <categories>
-        <category>Linux</category>
-      </categories>
-      <tags>
-        <tag>Fedora</tag>
-      </tags>
-  </entry>
-  <entry>
-    <title>在Fedora中全自动签名英伟达驱动内核模块以支持安全启动（Secure Boot）</title>
-    <url>/2022/04/09/%E5%9C%A8Fedora%E4%B8%AD%E5%85%A8%E8%87%AA%E5%8A%A8%E7%AD%BE%E5%90%8D%E8%8B%B1%E4%BC%9F%E8%BE%BE%E9%A9%B1%E5%8A%A8%E5%86%85%E6%A0%B8%E6%A8%A1%E5%9D%97%E4%BB%A5%E6%94%AF%E6%8C%81%E5%AE%89%E5%85%A8%E5%90%AF%E5%8A%A8%EF%BC%88Secure%20Boot%EF%BC%89/</url>
-    <content><![CDATA[<h1>前言</h1>
-<p>目前新出厂的电脑UEFI会默认开启安全启动（Secure Boot），以阻止不受信任的引导加载程序启动，可以在一定程度上防御RootKit病毒，不过同样会阻止一些未经微软签名的Linux发行版的安装和运行，比如Arch Linux。虽然可以直接选择在主板设置中关闭安全启动来解决一系列麻烦，但就在近期微软公布的Windows11最低硬件标准中可以看到，安全启动被微软看的越来越重。所以掌握让自己常用的Linux发行版支持安全启动的方法是有必要的。然而，让Linux本身支持安全启动，最重要的是让发行商对该Linux的内核与引导加载器进行签名。本文就已经通过安全启动认证的比较受欢迎的一个Linux发行版——Fedora，来讲解常见的英伟达驱动签名问题。</p>
-<p>至于为什么有这个教程，是因为如果在Fedora上通过自带软件源一键安装官方的英伟达驱动，会造成这些驱动的内核模块未签名，导致在Linux启动过程中因为安全启动校验签名的存在，被阻止加载这些模块，进而无法正常驱动显卡。用过Ubuntu的伙伴们应该知道，在安全启动开启的情况下 ，Ubuntu安装程序会自动用自签密钥签名英伟达驱动内核模块，并在开机过程中自动将该自签密钥导入MOK List（安全启动机器主人信任密钥列表）。而Fedora只会保证自身内核签名有效，对后期安装的第三方内核模块签名问题不予理会，导致无法正常加载英伟达驱动。</p>
-<p><strong>本教程已在Fedora 36 Beta版本上测试通过，理论上向上或向下兼容，具体<br>
-是否有效请自测。注意备份重要数据！笔者仅为分享经验，不对您的任何操作造成的任何后果而负责！</strong></p>
-<h1>前提条件</h1>
-<p>在开始之前，您的电脑必须满足以下条件</p>
-<ol>
-<li><strong>主板必须在已经开启安全启动的情况下安装Fedora</strong></li>
-<li><strong>必须确保任何来源、任何版本的英伟达驱动从未被安装过</strong> （如果已经安装过，请搜索有关彻底卸载的相关教程，或者直接重装系统。因为笔者在试验时发现卸载完后再继续进行以下步骤仍然会导致驱动模块无法被签名）</li>
-</ol>
-<h1>具体步骤</h1>
-<p>打开终端，按步骤分别执行以下命令（本教程通用性强，无需考虑命令中的路径与环境变量问题）。</p>
-<h2 id="1-将系统更新到最新并重启Fedora">1.将系统更新到最新并重启Fedora</h2>
-<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo dnf update</span><br><span class="line">sudo reboot</span><br></pre></td></tr></table></figure>
-<p><img src="https://img-blog.csdnimg.cn/186ac80f5d344352ae2afeab54d8abea.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="将系统更新到最新并重启Fedora"></p>
-<h2 id="2-安装Mok工具（mokutil）和密钥生成工具（openssl）">2.安装Mok工具（mokutil）和密钥生成工具（openssl）</h2>
-<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo dnf install mokutil openssl</span><br></pre></td></tr></table></figure>
-<p><img src="https://img-blog.csdnimg.cn/8209ef14f1284d03b92479c6ba51a9cc.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="安装Mok工具和密钥生成工具"></p>
-<h2 id="3-生成内核驱动模块的自签安全启动密钥">3.生成内核驱动模块的自签安全启动密钥</h2>
-<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo openssl req -new -x509 -newkey rsa:2048 -keyout ~/driver-signing.key -outform DER -out ~/driver-signing.der -nodes -days 36500 -subj <span class="string">&quot;/CN=Private Driver Signing&quot;</span></span><br></pre></td></tr></table></figure>
-<p><img src="https://img-blog.csdnimg.cn/f3b3643ef46f4bc19193051fb24dc126.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="生成内核驱动模块的自签安全启动密钥"></p>
-<h2 id="4-将刚刚自签的安全启动密钥进行注册（导入进主板）">4.将刚刚自签的安全启动密钥进行注册（导入进主板）</h2>
-<p>此操作会让Linux内核信任由该自签密钥签名过的任何内核模块。</p>
-<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo mokutil --import ~/driver-signing.der</span><br></pre></td></tr></table></figure>
-<p>执行完此命令后，控制台会让您设置一个密码，该密码的作用是用来导入并注册自签自签密钥，只会在第6步用到一次，合理设置即可，建议8位。<br>
-<img src="https://img-blog.csdnimg.cn/3462d916e5c74b02afc0ce54d61b2e1b.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="在这里插入图片描述"></p>
-<h2 id="5-重启电脑">5.重启电脑</h2>
-<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo reboot</span><br></pre></td></tr></table></figure>
-<h2 id="6-导入并注册自签密钥">6.导入并注册自签密钥</h2>
-<p>在第5步键入完命令并重启时，系统启动之前会出现一个蓝色界面（标题为<strong>MOK Manager</strong>）。在安全启动的条件下安装过Ubuntu的您可能会熟悉。按照以下选项导入密钥即可：<br>
-<strong>注意：以下几个步骤要小心，任何一步误操作，都必须从第4步开始重做。</strong></p>
-<ol>
-<li>
-<p>通过方向键选择“Enroll MOK”<img src="https://img-blog.csdnimg.cn/51cd70e3164a45ecb68b1c7eabe79e02.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="Enroll MOK"></p>
-</li>
-<li>
-<p>选择“Continue”<img src="https://img-blog.csdnimg.cn/e18eaa33448d482c8588139d3a0215a3.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="Continue"></p>
-</li>
-<li>
-<p>选择“Yes”<img src="https://img-blog.csdnimg.cn/e70070c9f37a4e749c2364dee4707aec.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="Yes"></p>
-</li>
-<li>
-<p>此时输入在第4步时设置的密码并回车（输入过程中密码不会显示）<img src="https://img-blog.csdnimg.cn/f258df942b034ea6b5beeeae7df5ceb2.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="键入密码并回车"></p>
-</li>
-<li>
-<p>成功后选择“Reboot”<img src="https://img-blog.csdnimg.cn/5b1b69bfadd446d99adaf099ae6ad3e7.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="Reboot"><br>
-<strong>此时，电脑会再次重启，等待进入Fedora即可。</strong></p>
-</li>
-</ol>
-<h2 id="7-启用两个第三方仓库，以便于安装修改过的内核工具进行模块签名">7.启用两个第三方仓库，以便于安装修改过的内核工具进行模块签名</h2>
-<p>（感谢<a href="https://www.reddit.com/user/EliaGeretto/">Elia Geretto</a>提供的仓库）</p>
-<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo dnf copr <span class="built_in">enable</span> egeretto/kmodtool-secureboot</span><br></pre></td></tr></table></figure>
-<p><img src="https://img-blog.csdnimg.cn/ef9c10735a6d40f49ac8e8826d090f1f.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="在这里插入图片描述"></p>
-<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo dnf copr <span class="built_in">enable</span> egeretto/akmods-secureboot</span><br></pre></td></tr></table></figure>
-<p><img src="https://img-blog.csdnimg.cn/667a68080f8248d1bcf975586a01fed8.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="在这里插入图片描述"></p>
-<h2 id="8-修改仓库优先级，让修改过的内核工具优先于官方原版安装">8.修改仓库优先级，让修改过的内核工具优先于官方原版安装</h2>
-<p>以ROOT权限打开文件管理器，修改以下两个文件，每个文件均增加一行：priority=1，然后保存退出。<br>
-<img src="https://img-blog.csdnimg.cn/6b137377ccdb407a9db0581ddfeeb394.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="在这里插入图片描述"><br>
-执行以下命令刷新软件源：</p>
-<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo dnf update --refresh</span><br></pre></td></tr></table></figure>
-<h2 id="9-安装修改过的内核工具（kmodtool与akmods）">9.安装修改过的内核工具（kmodtool与akmods）</h2>
-<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo dnf install kmodtool akmods</span><br></pre></td></tr></table></figure>
-<p><strong>注意控制台中的此处，查看这两个软件包是否来自于刚刚添加的第三方仓库</strong><br>
-<img src="https://img-blog.csdnimg.cn/0c737ccdbc7f441dbd6cc83d5fe227b3.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="如图所示"><br>
-输入y同意导入仓库公钥：<br>
-<img src="https://img-blog.csdnimg.cn/cf35e9b4073140198be264a722d928aa.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="在这里插入图片描述"></p>
-<h2 id="10-移动证书至正确的位置以便于内核工具能识别到">10.移动证书至正确的位置以便于内核工具能识别到</h2>
-<p>依次执行以下命令即可：</p>
-<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo mv ~/driver-signing.der /etc/pki/akmods/certs/public_key.der</span><br></pre></td></tr></table></figure>
-<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo chown root:akmods /etc/pki/akmods/certs/public_key.der</span><br></pre></td></tr></table></figure>
-<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo chmod 640 /etc/pki/akmods/certs/public_key.der</span><br></pre></td></tr></table></figure>
-<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo mv ~/driver-signing.key /etc/pki/akmods/private/private_key.priv</span><br></pre></td></tr></table></figure>
-<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo chown root:akmods /etc/pki/akmods/private/private_key.priv</span><br></pre></td></tr></table></figure>
-<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo chmod 640 /etc/pki/akmods/private/private_key.priv</span><br></pre></td></tr></table></figure>
-<p><img src="https://img-blog.csdnimg.cn/b5151ee4ec10446abac7811e02ed72b4.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="在这里插入图片描述"></p>
-<h2 id="11-安装英伟达驱动">11.安装英伟达驱动</h2>
-<p>执行以下命令即可：</p>
-<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo dnf install gcc kernel-headers kernel-devel akmod-nvidia xorg-x11-drv-nvidia xorg-x11-drv-nvidia-libs xorg-x11-drv-nvidia-libs.i686</span><br></pre></td></tr></table></figure>
-<h2 id="12-编译并签名驱动内核模块">12.编译并签名驱动内核模块</h2>
-<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo akmods --force</span><br></pre></td></tr></table></figure>
-<h2 id="13-更新内核启动镜像">13.更新内核启动镜像</h2>
-<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo dracut --force</span><br></pre></td></tr></table></figure>
-<p><img src="https://img-blog.csdnimg.cn/1d20154c7cea4db5876c1d50a61ebabd.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="在这里插入图片描述"></p>
-<h2 id="14-重启电脑">14.重启电脑</h2>
-<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo reboot</span><br></pre></td></tr></table></figure>
-<h2 id="15-查看英伟达驱动是否正确加载">15.查看英伟达驱动是否正确加载</h2>
-<p>执行以下命令，查看是否有如图所示的类似结果，并查看英伟达控制面板是否正常显示。<br>
-<img src="https://img-blog.csdnimg.cn/7d079ab77c5b49d4b44976ce4902aae4.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="内核模块已正确加载效果图"><br>
-<img src="https://img-blog.csdnimg.cn/79ea558827454978ba64fc6f6795f3ab.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="在这里插入图片描述"><br>
-<img src="https://img-blog.csdnimg.cn/edb0f800e4554b9d8d4d2e650159eef4.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAS3lsaW5EZW1vbnMu,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center" alt="在这里插入图片描述"><br>
-教程结束</p>
 ]]></content>
       <categories>
         <category>Linux</category>
